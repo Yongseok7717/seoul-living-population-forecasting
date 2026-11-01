@@ -58,13 +58,14 @@ def eval_flags(args):
 
 def agg_dump(f, tag):
     """per-origin absolute-error and population sums from a train_cap dump; deletes the dump"""
-    z = np.load(f); X = z["X"]; Xh = np.maximum(z["Xhat"], 0); B = z["B"]; tm = pd.to_datetime(z["time"][:, 0].astype(str)) - pd.Timedelta(hours=1)
+    z = np.load(f); X = z["X"]; Xh = z["Xhat"]; B = z["B"];             # no clipping, as in the reported wMAPE
+    tm = pd.to_datetime(z["time"][:, 0].astype(str)) - pd.Timedelta(hours=1)
     d = pd.DataFrame({"origin": tm, "ae": np.abs(Xh - X).sum((1, 2)), "x": X.sum((1, 2))}); del z, X, Xh, B
     return d
 
 
 def dump(tag, init, ckpt_dir, args, splits=None):
-    agg = OUT / f"agg_{tag}.csv"
+    agg = OUT / f"aggu_{tag}.csv"
     if agg.exists():
         return pd.read_csv(agg, parse_dates=["origin"])
     f = OUT / f"d_{tag}_pred_test.npz"
@@ -88,11 +89,13 @@ def fixed_protocol():
     A = {}
     for i, run in enumerate(("t16c_B_A5_lr0.003_wd0", "t16c_S_A5_s1", "t16c_S_A5_s2")):
         A[f"M2_{i}"] = dump(f"M2_{i}", run, ORIG_CKPT, args_of(ORIG_RES / f"{run}.json"))
-    A["M3"] = dump("M3", "t16c_T2_cal_nofb", ORIG_CKPT, args_of(ORIG_RES / "t16c_T2_cal_nofb.json"))
-    A["M3b"] = dump("M3b", "exp07_P12", E07 / "ckpt", args_of(E07 / "exp07_P12.json"))
+    for i, run in enumerate(("t16c_T2_cal_nofb", "t16c_S_T2-cal-nofb_s1", "t16c_S_T2-cal-nofb_s2")):     # M3, three runs
+        A[f"M3_{i}"] = dump("M3" if i == 0 else f"M3_{i}", run, ORIG_CKPT, args_of(ORIG_RES / f"{run}.json"))
+    for i, run in enumerate(("exp07_P12", "exp07_P12_s1", "exp07_P12_s2")):                           # M3b, three runs
+        A[f"M3b_{i}"] = dump("M3b" if i == 0 else f"M3b_{i}", run, E07 / "ckpt", args_of(E07 / f"{run}.json"))
     A["LIN"] = dump("LIN", lin, OUT / "ckpt", args_of(OUT / f"{lin}.json"))
     # R6 and B1 from the M2 run used for B1 (run 0): need the per-cell forecasts -> one more dump of run 0 kept in memory
-    agg_r6 = OUT / "agg_R6.csv"; agg_b1 = OUT / "agg_B1.csv"
+    agg_r6 = OUT / "aggu_R6.csv"; agg_b1 = OUT / "aggu_B1.csv"
     if not (agg_r6.exists() and agg_b1.exists()):
         f = OUT / "d_M2_0b_pred_test.npz"
         if not f.exists():
@@ -100,7 +103,7 @@ def fixed_protocol():
                  + eval_flags(args_of(ORIG_RES / "t16c_B_A5_lr0.003_wd0.json")), None, {"LP_CKPT": str(ORIG_CKPT)})
         z = np.load(f); X = z["X"]; Xm = z["Xhat"]; B = z["B"]; tm = pd.to_datetime(z["time"][:, 0].astype(str)) - pd.Timedelta(hours=1)
         R6 = np.load(E17 / "chronos_std_residual.npz")["test"].astype(np.float32); assert R6.shape == X.shape, (R6.shape, X.shape)
-        Xr = np.maximum(B + R6, 0); Xb = np.maximum(0.9 * Xm + 0.1 * (B + R6), 0)
+        Xr = B + R6; Xb = 0.9 * Xm + 0.1 * (B + R6)
         pd.DataFrame({"origin": tm, "ae": np.abs(Xr - X).sum((1, 2)), "x": X.sum((1, 2))}).to_csv(agg_r6, index=False)
         pd.DataFrame({"origin": tm, "ae": np.abs(Xb - X).sum((1, 2)), "x": X.sum((1, 2))}).to_csv(agg_b1, index=False)
         del z, X, Xm, B, R6, Xr, Xb; f.unlink()
@@ -110,7 +113,10 @@ def fixed_protocol():
     wk = A["M2_0"].origin.dt.isocalendar(); wk = (wk.year * 100 + wk.week).values
     G = {k_: d.groupby(wk)[["ae", "x"]].sum() for k_, d in A.items()}; weeks = G["M2_0"].index.values
     def stat(sel):
-        w = {k_: 100 * g.loc[sel, "ae"].sum() / g.loc[sel, "x"].sum() for k_, g in G.items()}; w["M2"] = np.mean([w["M2_0"], w["M2_1"], w["M2_2"]]); return w
+        w = {k_: 100 * g.loc[sel, "ae"].sum() / g.loc[sel, "x"].sum() for k_, g in G.items()}
+        for m in ("M2", "M3", "M3b"):
+            w[m] = np.mean([w[f"{m}_{i}"] for i in range(3)])                       # three-run means, as in Table 3
+        return w
     pt = stat(weeks); rng = np.random.default_rng(0); boots = [stat(rng.choice(weeks, len(weeks), replace=True)) for _ in range(2000)]
     comps = [("B1", "M2_0"), ("M3", "M2"), ("M3b", "M2"), ("LIN", "M2"), ("R6", "M2"), ("M2_1", "M2_0"), ("M2_2", "M2_0")]
     rows = [{"model": k_, "wMAPE": pt[k_], "ci_lo": np.percentile([b[k_] for b in boots], 2.5), "ci_hi": np.percentile([b[k_] for b in boots], 97.5)} for k_ in ["M2", "M2_0", "M2_1", "M2_2", "M3", "M3b", "LIN", "R6", "B1"]]
@@ -124,7 +130,7 @@ def rolling_protocol():
     a5 = args_of(ORIG_RES / "t16c_B_A5_lr0.003_wd0.json")
     for q, (tr, va, te) in FOLDS.items():
         for lab, src in (("fixed", f"r_{q}_fixed"), ("rolling", f"r_{q}_roll")):
-            agg = OUT / f"agg_{src}.csv"
+            agg = OUT / f"aggu_{src}.csv"
             if not agg.exists():
                 agg_dump(E23 / f"{src}_pred_test.npz", src).to_csv(agg, index=False)      # exp23 dumps are kept (not deleted here)
             d = pd.read_csv(agg, parse_dates=["origin"]); d["q"] = q; A[lab].append(d)
