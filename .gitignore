@@ -1,0 +1,11 @@
+# data and outputs are not part of the repository
+data/
+results/
+.env
+__pycache__/
+*.pyc
+*.pt
+*.npz
+*.npy
+*.log
+.ipynb_checkpoints/

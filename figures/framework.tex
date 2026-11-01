@@ -1,0 +1,62 @@
+% Overview of the forecasting framework (TikZ). Input with \input{figures/framework.tex} inside a figure environment.
+\begin{tikzpicture}[
+  font=\small,
+  node distance=4mm and 7mm,
+  box/.style={draw=black!70, rounded corners=2pt, align=center, inner sep=3pt, minimum height=9mm, text width=29mm, fill=white},
+  inp/.style={box, fill=gray!10, draw=gray!60},
+  main/.style={box, fill=blue!10, draw=blue!50!black, thick},
+  outp/.style={box, fill=green!12, draw=green!40!black},
+  lever/.style={box, fill=orange!15, draw=orange!60!black, dashed},
+  aux/.style={box, fill=white, draw=black!45, dashed, text=black!70},
+  col/.style={rounded corners=4pt, fill=gray!5, draw=none, inner sep=2.5mm},
+  head/.style={font=\footnotesize\scshape, text=black!60},
+  arr/.style={-{Latex[length=2.2mm]}, thick, black!80},
+  thin/.style={-{Latex[length=1.8mm]}, black!50},
+  tried/.style={-{Latex[length=1.8mm]}, black!50, dashed},
+]
+% ---------------- row 2: main path
+\node[inp] (x) {Living population $X$\\ last \qty{72}{\hour}, every cell};
+\node[box, right=of x] (B) {Causal baseline $B$\\ 8-week same-hour median};
+\node[main, right=of B] (m2) {\textbf{M2} FiLM-MLP\\ backbone};
+% ---------------- row 1: conditioning inputs and FiLM
+\node[box, above=of m2] (film) {FiLM modulation\\ cluster $\times$ calendar};
+\node[inp] (cal) at (x |- film) {Calendar and\\ functional cluster $c(i)$};
+\node[main, right=of m2] (b1) {\textbf{B1} $(1-w)\,\mathrm{M2}+w\,\mathrm{R6}$\\ combined forecaster};
+\node[outp, right=of b1] (xhat) {Forecast $\hat X=B+s\,\hat z$\\ next \qty{24}{\hour}, 7,807 cells};
+% ---------------- row 3
+\node[box, below=of B] (R) {Residual $R=X-B$\\ $z=\operatorname{clip}(R/s_i)$};
+\node[box, below=of m2] (r6) {\textbf{R6} Chronos-Bolt\\ zero-shot on $R$, \qty{72}{\hour}};
+\node[lever, below=of b1] (ec) {Event day:\\ profile $\bm\pi$ (EC) or\\ analog context (ZA)};
+\node[outp, below=of xhat] (pi) {Pressure index\\ $\Pi=\hat X/(A_{i,m}+\epsilon_0)$};
+% ---------------- row 4: the mixture of experts, evaluated but not adopted
+\node[aux, below=of ec] (mix) {Mixture \textbf{X1--X3}\\ gated M2 +\\ extreme expert;\\ no gain in wMAPE};
+\node[aux] (ext) at (r6 |- mix) {Extreme expert\\ MLP trained on event hours};
+\node[inp] (ev) at (x |- mix.south) [yshift=-7mm] {Venue schedule,\\ previous events};
+% ---------------- column backgrounds with a common header row
+\coordinate (top) at ($(film.north)+(0,7mm)$); \coordinate (bot) at ($(ev.south)+(0,-1mm)$);
+\begin{scope}[on background layer]
+\node[col, fit=(cal)(x)(ev)(cal.north |- top)(cal.south |- bot)] (c1) {};
+\node[col, fit=(B)(R)(B.north |- top)(B.south |- bot)] (c2) {};
+\node[col, fit=(film)(m2)(r6)(ext)(film.north |- top)(film.south |- bot)] (c3) {};
+\node[col, fit=(b1)(ec)(mix)(b1.north |- top)(b1.south |- bot)] (c4) {};
+\node[col, fit=(xhat)(pi)(xhat.north |- top)(xhat.south |- bot)] (c5) {};
+\end{scope}
+\foreach \c/\t in {c1/Inputs, c2/Baseline--residual, c3/Forecasters, c4/Combination, c5/Outputs}
+  \node[head, anchor=north] at ($(\c.north)+(0,-1mm)$) {\t};
+% ---------------- arrows
+\draw[thin] (cal) -- (film);
+\draw[thin] (film) -- (m2);
+\draw[arr] (x) -- (B);
+\draw[arr] (B) -- (R);
+\draw[arr] (R.east) -- (m2.west);
+\draw[arr] (R.east) -- (r6.west);
+\draw[thin] (R.east) -- (ext.west);
+\draw[arr] (m2) -- (b1);
+\draw[arr] (r6.east) -- (b1.west);
+\draw[tried] (ext.east) -- (mix.west);
+\draw[tried, rounded corners=3pt] (m2.east) -- ++(3.5mm,0) |- (mix.west);
+\draw[thin, rounded corners=3pt] (ev.east) -| ($(ec.east)+(3.5mm,0)$) -- (ec.east);
+\draw[thin] (ec) -- (b1);
+\draw[arr] (b1) -- (xhat);
+\draw[arr] (xhat) -- (pi);
+\end{tikzpicture}

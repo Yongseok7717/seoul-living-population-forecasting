@@ -1,0 +1,11 @@
+numpy>=1.26
+pandas>=2.1
+scipy>=1.11
+scikit-learn>=1.4
+torch>=2.2
+matplotlib>=3.8
+pyarrow>=14
+geopandas>=0.14
+shapely>=2.0
+pyproj>=3.6
+chronos-forecasting>=1.5   # Chronos-Bolt (amazon/chronos-bolt-small), zero-shot models R5/R6
