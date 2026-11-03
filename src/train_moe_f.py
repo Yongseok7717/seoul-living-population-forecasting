@@ -10,7 +10,8 @@ frozen / refitted binary gate.  No graph, mobility or facility context.
 Experts: 'ref' = cached Task 13/14 ResidualForecaster experts (N_mlp_masked_k72_q95_film / E_mlp_none_k72_q95_film, FiLM-MLP normal, MLP extreme);
 'ckpt:<name>' = train_cap.py checkpoint (results/base/ckpt/<name>.pt).  Gate: 'ref' = cached G_wbce_k72_q95 (linear backbone, wBCE);
 'refit_bce' = same architecture / inputs / loss retrained from scratch (<= --gate_epochs, best val PR-AUC); 'refit_mix' = initialised from the
-reference gate and trained on Huber((1-p) z_N + p z_E, y) with the experts frozen (best val mixture MAE).
+reference gate and trained on Huber((1-p) z_N + p z_E, y) with the experts frozen (best val mixture MAE); 'none' = no gate, only the
+constant blends (1-w) z_N + w z_E (B1, with a pre-computed extreme expert).
 Mixtures evaluated as in train_moe: normal_only, extreme_only, oracle, soft (raw p), soft_platt (Platt on validation), hard tau (val-selected).
 Results -> results/base/results/<name>.json (same layout as train_moe results).
 """
@@ -48,7 +49,7 @@ def main():
     def load_expert(spec, role):
         """returns predict(batch, sel=None) -> z_hat [B,H,S] (numpy) ; batch = md.batch output"""
         if spec.startswith("npz:"):                                                  # pre-computed expert (e.g. zero-shot foundation model), evaluation windows only
-            assert args.gate == "ref" or args.gate.startswith("ckpt:"), "a pre-computed expert has no training-window forecasts: use a frozen or saved gate"
+            assert args.gate in ("ref", "none") or args.gate.startswith("ckpt:"), "a pre-computed expert has no training-window forecasts: use a frozen, saved or no gate"
             return None, "precomputed " + Path(spec.split(":", 1)[1]).name, 0
         if spec == "ref":
             key = "N_mlp_masked_k72_q95_film" if role == "normal" else "E_mlp_none_k72_q95_film"
@@ -94,9 +95,11 @@ def main():
     print("expert predictions ready", round((time.time() - t0) / 60, 1), "min", flush=True)
 
     # ---------------- gate ----------------
-    _b = md.batch("train", tr[:1]); n_g, n_cal = _b[6].shape[-1], _b[2].shape[-1]
-    gate = build_gate(data.static.shape[1], H, k, 64, "linear", n_g, n_cal, 0).to(dev)
-    gate.load_state_dict(torch.load(CACHE / "G_wbce_k72_q95.pt", map_location=dev)); gate_desc = "reference G_wbce_k72_q95 (frozen)"
+    gate, gate_desc = None, "none (constant blends only)"
+    if args.gate != "none":
+        _b = md.batch("train", tr[:1]); n_g, n_cal = _b[6].shape[-1], _b[2].shape[-1]
+        gate = build_gate(data.static.shape[1], H, k, 64, "linear", n_g, n_cal, 0).to(dev)
+        gate.load_state_dict(torch.load(CACHE / "G_wbce_k72_q95.pt", map_location=dev)); gate_desc = "reference G_wbce_k72_q95 (frozen)"
 
     def gate_logits(b, sel=None):
         xh, th, tfu, bf, y, ye, xg, dtf, xf = b; idx = np.arange(N) if sel is None else np.asarray(sel); outs = []
@@ -147,8 +150,9 @@ def main():
                 if bad >= args.gate_patience:
                     break
         gate.load_state_dict(best[1]); torch.save(gate.state_dict(), CKPT / f"{args.name}_gate.pt"); gate_desc = f"{args.gate} (best epoch {best[2]}, val score {best[0]:.4f})"
-    gate.eval(); LG = {}
-    for s in ("val", "test"):
+    LG = {}
+    for s in ("val", "test") if gate is not None else ():
+        gate.eval()
         with torch.no_grad():
             LG[s] = np.concatenate([gate_logits(md.batch(s, ts_eval[s][i:i + 8])).cpu().numpy().astype(np.float16) for i in range(0, len(ts_eval[s]), 8)])
     print("gate:", gate_desc, round((time.time() - t0) / 60, 1), "min", flush=True)
@@ -172,17 +176,20 @@ def main():
 
     evaluate("normal_only", zN); evaluate("extreme_only", zE)
     evaluate("oracle", {s: (lambda s=s: (1 - YE[s]) * zN[s].astype(np.float32) + YE[s] * zE[s].astype(np.float32)) for s in zN})
-    P = {s: (1 / (1 + np.exp(-LG[s].astype(np.float32)))).astype(np.float32) for s in LG}; g = {}
-    for s in P:
-        y = YE[s].ravel(); p = P[s].ravel(); sub = rng.choice(len(y), min(len(y), 4_000_000), replace=False); ece, rel = ece_score(p[sub], y[sub])
-        g[s] = {"auprc": float(average_precision_score(y[sub], p[sub])), "auroc": float(roc_auc_score(y[sub], p[sub])), "brier": float(brier_score_loss(y[sub], p[sub])), "ece": ece, "mean_p": float(p.mean()), "event_rate": float(y.mean())}
-    yv = YE["val"].ravel(); lv = LG["val"].astype(np.float32).ravel(); sub = rng.choice(len(yv), 2_000_000, replace=False)
-    platt = LogisticRegression(C=1e6, max_iter=200).fit(lv[sub, None], yv[sub]); Pp = {s: platt.predict_proba(LG[s].astype(np.float32).reshape(-1, 1))[:, 1].reshape(LG[s].shape).astype(np.float32) for s in LG}
-    for s in Pp:
-        y = YE[s].ravel(); p = Pp[s].ravel(); sub2 = rng.choice(len(y), min(len(y), 4_000_000), replace=False); ece, _ = ece_score(p[sub2], y[sub2]); g[s]["brier_platt"] = float(brier_score_loss(y[sub2], p[sub2])); g[s]["ece_platt"] = ece
-    result["gates"]["gate"] = g; print("gate metrics", json.dumps({s: {k_: round(v, 4) for k_, v in g[s].items()} for s in g}), flush=True)
-    mix = lambda W, s: (lambda: (1 - W[s]) * zN[s].astype(np.float32) + W[s] * zE[s].astype(np.float32))
-    evaluate("soft", {s: mix(P, s) for s in P}); evaluate("soft_platt", {s: mix(Pp, s) for s in Pp})
+    if gate is None:                                                                                # B1: constant blends, no gate
+        args.blend_set = "const"; P = Pp = {s_: None for s_ in zN}
+    else:
+        P = {s: (1 / (1 + np.exp(-LG[s].astype(np.float32)))).astype(np.float32) for s in LG}; g = {}
+        for s in P:
+            y = YE[s].ravel(); p = P[s].ravel(); sub = rng.choice(len(y), min(len(y), 4_000_000), replace=False); ece, rel = ece_score(p[sub], y[sub])
+            g[s] = {"auprc": float(average_precision_score(y[sub], p[sub])), "auroc": float(roc_auc_score(y[sub], p[sub])), "brier": float(brier_score_loss(y[sub], p[sub])), "ece": ece, "mean_p": float(p.mean()), "event_rate": float(y.mean())}
+        yv = YE["val"].ravel(); lv = LG["val"].astype(np.float32).ravel(); sub = rng.choice(len(yv), 2_000_000, replace=False)
+        platt = LogisticRegression(C=1e6, max_iter=200).fit(lv[sub, None], yv[sub]); Pp = {s: platt.predict_proba(LG[s].astype(np.float32).reshape(-1, 1))[:, 1].reshape(LG[s].shape).astype(np.float32) for s in LG}
+        for s in Pp:
+            y = YE[s].ravel(); p = Pp[s].ravel(); sub2 = rng.choice(len(y), min(len(y), 4_000_000), replace=False); ece, _ = ece_score(p[sub2], y[sub2]); g[s]["brier_platt"] = float(brier_score_loss(y[sub2], p[sub2])); g[s]["ece_platt"] = ece
+        result["gates"]["gate"] = g; print("gate metrics", json.dumps({s: {k_: round(v, 4) for k_, v in g[s].items()} for s in g}), flush=True)
+        mix = lambda W, s: (lambda: (1 - W[s]) * zN[s].astype(np.float32) + W[s] * zE[s].astype(np.float32))
+        evaluate("soft", {s: mix(P, s) for s in P}); evaluate("soft_platt", {s: mix(Pp, s) for s in Pp})
     if NPZ_E is not None:
         def quick(W):
             pz = ((1 - W) * zN["val"].astype(np.float32) + W * zE["val"].astype(np.float32)); Xh, Rh, X, R, B = data.people("val", ts_eval["val"], pz); v = float(np.abs(Xh - X).sum() / X.sum()); del pz, Xh, Rh, X, R, B; gc.collect(); return v
@@ -192,11 +199,12 @@ def main():
             cands = {k_: f_ for k_, f_ in cands.items() if k_.startswith("const")}
         sc = {k_: quick(f_("val")) for k_, f_ in cands.items()}; best = min(sc, key=sc.get); result["blend_candidates_val_wmape"] = sc; result["blend_desc"] = best; print("blend (val wMAPE):", json.dumps({k_: round(v, 5) for k_, v in sc.items()}), "->", best, flush=True)
         evaluate("blend_val", {s: (lambda s=s: ((1 - cands[best](s)) * zN[s].astype(np.float32) + cands[best](s) * zE[s].astype(np.float32))) for s in P})
-    cand = {}
-    for tau in (0.3, 0.5, 0.7):
-        pv = np.where(P["val"] > tau, zE["val"], zN["val"]).astype(np.float32); cand[tau] = metrics(data, "val", ts_eval["val"], pv, DT["val"])["R_mae"]; del pv
-    tau = min(cand, key=cand.get); result["gates"]["gate"]["hard_tau_val_R_mae"] = {str(t_): float(v) for t_, v in cand.items()}; result["gates"]["gate"]["tau_selected"] = tau
-    evaluate(f"hard_tau{tau}", {s: (lambda s=s: np.where(P[s] > tau, zE[s], zN[s]).astype(np.float32)) for s in P})
+    if gate is not None:
+        cand = {}
+        for tau in (0.3, 0.5, 0.7):
+            pv = np.where(P["val"] > tau, zE["val"], zN["val"]).astype(np.float32); cand[tau] = metrics(data, "val", ts_eval["val"], pv, DT["val"])["R_mae"]; del pv
+        tau = min(cand, key=cand.get); result["gates"]["gate"]["hard_tau_val_R_mae"] = {str(t_): float(v) for t_, v in cand.items()}; result["gates"]["gate"]["tau_selected"] = tau
+        evaluate(f"hard_tau{tau}", {s: (lambda s=s: np.where(P[s] > tau, zE[s], zN[s]).astype(np.float32)) for s in P})
     result["minutes"] = round((time.time() - t0) / 60, 1)
     (RES / f"{args.name}.json").write_text(json.dumps(result, indent=1), encoding="utf-8"); print("saved", RES / f"{args.name}.json")
 

@@ -61,7 +61,6 @@ def main():
     lines = ["# Living-population pipeline QC summary", ""]
     lines += ["## Standard grid", "",
               f"- cells: {meta['n_cells']}, lattice {meta['lattice_shape_rows_cols']} (rows x cols), EPSG:{meta['crs_epsg']}",
-              f"- Vs30 missing (NaN or 0 in source): {meta['vs30_missing_cells']} cells",
               f"- rook edges {meta['rook_edges']}, queen edges {meta['queen_edges']}",
               f"- cells with dong mapping: {meta['cells_with_dong_mapping']}, split across several dongs: {meta['cells_split_across_multiple_dongs']}",
               f"- populated CELL_IDs absent from the shapefile (dropped): {meta['cells_with_population_but_not_in_grid']}", ""]

@@ -6,7 +6,6 @@ Per 250m cell, from observations alone (no model, no facilities yet):
   3. Exposure        night (03h) / afternoon (14h) / max-hour population, day-night ratio, peak hour, hourly CV
   4. Composition     elderly 65+, 70+, youth 10-19, female shares at night and day (regime A only, clean demographics)
                      long-/short-term foreigner shares (F1 format months, no masking)
-  5. Seismic proxy   Vs30 site class and an indicative amplification factor; exposure = population x factor
 
 Outputs (processed/atlas/):
   cell_profiles_pop10.npz        median[N,3,24], scale[N,3,24], daytypes
@@ -52,17 +51,6 @@ def daytype_of(ti: pd.DataFrame) -> np.ndarray:
     dt = np.where(dow == 5, 1, 0)
     dt = np.where((dow == 6) | ti.ymd.isin(HOLIDAY_SET).values, 2, dt)
     return dt
-
-
-def site_class(vs30):
-    """NEHRP-style site class from Vs30 (m/s) and an indicative short-period amplification factor."""
-    cls = np.full(len(vs30), "NA", dtype=object)
-    fac = np.full(len(vs30), np.nan)
-    bins = [(760, np.inf, "B", 1.0), (360, 760, "C", 1.2), (180, 360, "D", 1.6), (0, 180, "E", 2.5)]
-    for lo, hi, c, f in bins:
-        m = (vs30 >= lo) & (vs30 < hi)
-        cls[m], fac[m] = c, f
-    return cls, fac
 
 
 def main():
@@ -194,13 +182,8 @@ def main():
         comp[f"share_foreign_{k}"] = (comp[f"foreign_long_{k}"] + comp[f"foreign_temp_{k}"]) / np.maximum(
             comp[f"pop10_{k}_regimeA"] + comp[f"foreign_long_{k}"] + comp[f"foreign_temp_{k}"], 1e-6)
 
-    # ---------- 5. seismic proxy ----------
-    vs30 = grid.Vs30.values.astype(float)
-    cls, fac = site_class(np.nan_to_num(vs30, nan=-1))
-    cls[np.isnan(vs30)] = "NA"; fac[np.isnan(vs30)] = np.nan
-
     # ---------- assemble ----------
-    atlas = grid[["cell_idx", "CELL_ID", "row", "col", "CELL_X", "CELL_Y", "dong_major", "dong_major_name", "Vs30", "geometry"]].copy()
+    atlas = grid[["cell_idx", "CELL_ID", "row", "col", "CELL_X", "CELL_Y", "dong_major", "dong_major_name", "geometry"]].copy()
     atlas["pop10_night"] = night
     atlas["pop10_day"] = day
     atlas["pop10_maxhour_weekday"] = max_hour_pop
@@ -215,11 +198,6 @@ def main():
     atlas["Z_max_datetime"] = ti.datetime.values[zmax_t]
     for k, v in comp.items():
         atlas[k] = v
-    atlas["site_class"] = cls
-    atlas["amp_factor_indicative"] = fac
-    atlas["seismic_exposure_night"] = night * fac
-    atlas["seismic_exposure_day"] = day * fac
-    atlas["seismic_exposure_65plus_night"] = night * fac * comp["share_65plus_night"]
     populated = (night + day) > 0
     atlas["populated"] = populated
     atlas.drop(columns="geometry", errors="ignore").to_parquet(OUT / "atlas_cells.parquet", index=False)
@@ -256,15 +234,12 @@ def main():
     fig.suptitle("Composition atlas (weekday means, 2023-01..2024-06)")
     fig.tight_layout(); fig.savefig(OUT / "fig_atlas_composition.png", dpi=120); plt.close(fig)
 
-    fig, axs = plt.subplots(2, 3, figsize=(17, 9))
+    fig, axs = plt.subplots(1, 3, figsize=(17, 4.5)); axs = axs[None]
     panel(axs[0, 0], atlas["exceed_rate_Z3"], "exceedance rate Z>3", cmap="inferno", vmin=0, vmax=0.05)
     panel(axs[0, 1], np.minimum(zmax, 60), "max Z observed (capped 60)", cmap="inferno")
     panel(axs[0, 2], scale[:, 0, DAY_TT] / np.maximum(med[:, 0, DAY_TT], 1), "relative scale s/m, weekday 14h", cmap="viridis", vmin=0, vmax=0.5)
-    panel(axs[1, 0], vs30, "Vs30 (m/s)", cmap="terrain", mask_unpop=False)
-    panel(axs[1, 1], atlas["seismic_exposure_day"], "log10 seismic exposure (14h x amp)", log=True)
-    panel(axs[1, 2], atlas["seismic_exposure_65plus_night"], "log10 seismic exposure 65+ (03h x amp)", log=True)
-    fig.suptitle("Anomaly and seismic-proxy atlas")
-    fig.tight_layout(); fig.savefig(OUT / "fig_atlas_anomaly_seismic.png", dpi=120); plt.close(fig)
+    fig.suptitle("Anomaly atlas")
+    fig.tight_layout(); fig.savefig(OUT / "fig_atlas_anomaly.png", dpi=120); plt.close(fig)
 
     fig, ax = plt.subplots(figsize=(8, 4))
     for d in DAYTYPES:
@@ -292,11 +267,10 @@ def main():
              f"- sunday/holiday 14h {city.sunday_holiday[14]/1e6:.2f}M", "",
              "## Cell-level distribution (populated cells)", "", "| indicator | p10 | median | p90 | max |", "|---|---|---|---|---|"]
     for c in ["pop10_night", "pop10_day", "day_night_ratio", "cv_hourly_weekday", "share_65plus_night", "share_65plus_day",
-              "share_10_19_day", "share_foreign_night", "share_foreign_day", "exceed_rate_Z3", "Z_max", "seismic_exposure_day"]:
+              "share_10_19_day", "share_foreign_night", "share_foreign_day", "exceed_rate_Z3", "Z_max"]:
         q = p[c].quantile([0.1, 0.5, 0.9]).values
         lines.append(f"| {c} | {q[0]:.3f} | {q[1]:.3f} | {q[2]:.3f} | {p[c].max():.3f} |")
-    lines += ["", "## Site class (Vs30)", "", p.site_class.value_counts().to_frame("cells").to_markdown(), "",
-              "## Top event days (city-wide positive excess after removing the day's total-level drift)", "",
+    lines += ["", "## Top event days (city-wide positive excess after removing the day's total-level drift)", "",
               daily.sort_values("excess_adj", ascending=False).head(15).to_markdown(floatfmt=".3g"), "",
               "## Top cell-hour anomalies (Z, pop10 >= 200, regime-A baseline >= 20)", "",
               top[["datetime", "dong", "CELL_ID", "pop10", "baseline", "Z"]].head(25).to_markdown(index=False, floatfmt=".1f"), ""]

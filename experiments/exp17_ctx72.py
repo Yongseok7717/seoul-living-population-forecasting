@@ -1,9 +1,10 @@
 """Experiment 17 - every zero-shot comparison with the SAME 72 h history as M2 (Chronos-Bolt context = 72 h), raw (R5) and residual (R6).
 
   (a) standard protocol (train 2023 / val 2024 / test 2025, origins every 6 h): forecasts for val and test, then train_moe_f with
-      normal = fixed M2 and extreme = the zero-shot forecast (gate 'ref' and the mixture-tuned gate) -> alone, gated, oracle, blend;
+      normal = fixed M2, extreme = the zero-shot forecast and no gate -> zero-shot alone (R5, R6), oracle, and the blend B1
+      (1-w) M2 + w zero-shot with constant w selected on validation;
   (b) rolling protocol (four quarters, folds of exp01): forecasts for each fold's validation months and test quarter, assembly with the
-      rolling M2 and its X2 gate -> alone, gated, oracle, blend by quarter;
+      rolling M2 in the same way -> alone, oracle, blend by quarter;
   (c) 2023 training year (windows with t >= 72): zero-shot metrics next to the in-sample M2 of exp16.
 Forecasts are stored as residual-equivalents (raw: max(X_hat,0) - B).  Outputs results/exp17_ctx72/{summary_std.csv,
 summary_rolling.csv, summary_rolling_mean.csv, summary_train.csv}.
@@ -20,7 +21,7 @@ ROLL_CKPT = ROOT / "results" / "exp01_rolling" / "ckpt"; ORIG_CKPT = ROOT / "res
 FOLDS = {"Q1": ("202303-202410", "202411-202412", "202501-202503"), "Q2": ("202303-202501", "202502-202503", "202504-202506"),
          "Q3": ("202303-202504", "202505-202506", "202507-202509"), "Q4": ("202303-202507", "202508-202509", "202510-202512")}
 CTX, H, MODEL = 72, 24, "amazon/chronos-bolt-small"
-LAB = {"normal_only": "M2 alone", "extreme_only": "zero-shot alone", "soft": "gated mixture", "oracle": "oracle gate", "blend_val": "blend (val-selected)"}
+LAB = {"normal_only": "M2 alone", "extreme_only": "zero-shot alone", "oracle": "oracle gate", "blend_val": "blend (val-selected)"}
 
 
 def worker(tag, mode, splits):
@@ -77,13 +78,12 @@ def main():
             rc = call(f"chronos_{tag}", None, [sys.executable, me, "--worker", tag, mode, "train,val,test"], f"chronos_{tag}")
             if rc != 0 or not npz.exists():
                 print("FAILED", tag, rc, flush=True); continue
-        for gname, gate in (("ref", "ref"), ("mixgate", "ckpt:moef_F4mix_gate")):
-            name = f"exp17_{tag}_{gname}"; f = OUT / f"{name}.json"
-            if not f.exists():
-                rc = call(name, None, [sys.executable, str(SRC / "train_moe_f.py"), "--name", name, "--normal", "ckpt:t16c_B_A5_lr0.003_wd0", "--extreme", f"npz:{npz}", "--gate", gate], name, {"LP_CKPT": str(ORIG_CKPT)})
-                if rc != 0 or not f.exists():
-                    print("FAILED", name, rc, flush=True); continue
-            rows += rows_of(json.loads(f.read_text(encoding="utf-8")), {"mode": mode, "gate": gname})
+        name = f"exp17_{tag}"; f = OUT / f"{name}.json"
+        if not f.exists():
+            rc = call(name, None, [sys.executable, str(SRC / "train_moe_f.py"), "--name", name, "--normal", "ckpt:t16c_B_A5_lr0.003_wd0", "--extreme", f"npz:{npz}", "--gate", "none"], name, {"LP_CKPT": str(ORIG_CKPT)})
+            if rc != 0 or not f.exists():
+                print("FAILED", name, rc, flush=True); continue
+        rows += rows_of(json.loads(f.read_text(encoding="utf-8")), {"mode": mode})
         pd.DataFrame(rows).to_csv(OUT / "summary_std.csv", index=False, encoding="utf-8-sig")
     tr = [pd.read_csv(OUT / f"metrics_std_{m}.csv") for m in ("raw", "residual") if (OUT / f"metrics_std_{m}.csv").exists()]
     if tr:
@@ -99,7 +99,7 @@ def main():
                     print("FAILED", tag, rc, flush=True); continue
             f = OUT / f"{name}.json"
             if not f.exists():
-                rc = call(name, fold, [sys.executable, str(SRC / "train_moe_f.py"), "--name", name, "--normal", f"ckpt:roll_{q}_A5", "--extreme", f"npz:{npz}", "--gate", f"ckpt:roll_{q}_X2_gate"], name, {"LP_CKPT": str(ROLL_CKPT)})
+                rc = call(name, fold, [sys.executable, str(SRC / "train_moe_f.py"), "--name", name, "--normal", f"ckpt:roll_{q}_A5", "--extreme", f"npz:{npz}", "--gate", "none"], name, {"LP_CKPT": str(ROLL_CKPT)})
                 if rc != 0 or not f.exists():
                     print("FAILED", name, rc, flush=True); continue
             rows += rows_of(json.loads(f.read_text(encoding="utf-8")), {"mode": mode, "fold": q})

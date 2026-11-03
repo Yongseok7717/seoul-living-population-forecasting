@@ -1,6 +1,6 @@
 """Figure 5 (F05b_horizon_learned): test wMAPE by horizon, fixed protocol, from the runs that underlie Table 3:
 M2 = exp02 func_x_cal seed 0 (the run B1 is built on), M3 = t16c_T2_cal_nofb, X2/X3 = exp13 seed 2 (soft / oracle),
-R6 and B1 = exp17_std_residual_mixgate (72-hour context; extreme_only / blend_val).  Same style as make_paper_figures.f05."""
+R6 and B1 = exp17_std_residual (72-hour context; extreme_only / blend_val).  Same style as make_paper_figures.f05."""
 import json
 from pathlib import Path
 import matplotlib
@@ -25,8 +25,8 @@ curves = [
     ("M3 Transformer", load(RES / "t16c_T2_cal_nofb.json", "models", "model", "test"), C_TFM, "o"),
     ("X2 MoE, tuned gate", load(PUB / "exp13_moe_seeds" / "exp13_s2_mix.json", "models", "soft", "test"), C_MOE, "o"),
     ("X3 oracle mixture", load(PUB / "exp13_moe_seeds" / "exp13_s2_mix.json", "models", "oracle", "test"), C_ORA, "o"),
-    ("R6 Chronos zero-shot, residual", load(PUB / "exp17_ctx72" / "exp17_std_residual_mixgate.json", "models", "extreme_only", "test"), "#8c8c8c", "P"),
-    ("B1 blend M2 + R6", load(PUB / "exp17_ctx72" / "exp17_std_residual_mixgate.json", "models", "blend_val", "test"), C_BLD, "X"),
+    ("R6 Chronos zero-shot, residual", load(PUB / "exp17_ctx72" / "exp17_std_residual.json", "models", "extreme_only", "test"), "#8c8c8c", "P"),
+    ("B1 blend M2 + R6", load(PUB / "exp17_ctx72" / "exp17_std_residual.json", "models", "blend_val", "test"), C_BLD, "X"),
 ]
 fig, ax = plt.subplots(figsize=(6.0, 3.6))
 for lab, tt, c, mk in curves:

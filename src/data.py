@@ -77,16 +77,13 @@ class PopulationData:
                 self.profile[d, h] = med
                 self.profile_scale[d, h] = np.maximum(np.nanmedian(np.abs(blk - med), axis=0) * 1.4826, 0.05)
 
-        # ---- static node features: log1p facility counts, Vs30 ----
+        # ---- static node features: log1p facility counts ----
         fc_path = C.OUT / "facilities" / "facility_counts_by_cell.parquet"
         fc = pd.read_parquet(fc_path).set_index("cell_idx") if fc_path.exists() else None
         feats = []
         for t in FACILITY_TYPES:
             v = fc[f"n_{t}"].reindex(self.cells).fillna(0).values if fc is not None and f"n_{t}" in fc else np.zeros(self.N)
             feats.append(np.log1p(v))
-        vs = grid.Vs30.reindex(self.cells).values.astype(float)
-        vs = np.where(np.isnan(vs), np.nanmedian(vs), vs)
-        feats.append((vs - vs.mean()) / vs.std())
         feats.append(self.mu); feats.append(self.sigma)
         S = np.stack(feats, axis=1).astype(np.float32)
         self.static = (S - S.mean(0)) / (S.std(0) + 1e-6)

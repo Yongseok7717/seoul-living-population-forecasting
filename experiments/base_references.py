@@ -27,7 +27,7 @@ def main():
     for rel in STRUCTURES:
         run("train_residual.py", "r_k24_" + rel.replace(",", "+"), "--k", 24, "--relations", rel, "--epochs", 6, dry=dry)
     for rel in ("none", "func_knn", "func_dynamic"):
-        run("train_residual.py", f"r_k72_{rel}", "--k", 72, "--relations", rel, "--epochs", 6, dry=dry)
+        run("train_residual.py", f"r_k72_{rel}", "--k", 72, "--relations", rel, "--epochs", 6, "--batch", 2, dry=dry)
 
 
 if __name__ == "__main__":

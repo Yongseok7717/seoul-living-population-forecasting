@@ -16,7 +16,8 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from residual_data import ResidualData, ML_DIR   # noqa: E402
 
-RES = ML_DIR / "results"
+import os as _os
+RES = Path(_os.environ["LP_RESULTS"]) if _os.environ.get("LP_RESULTS") else ML_DIR / "results"
 HORIZONS = (1, 3, 6, 12, 24)
 
 

@@ -1,7 +1,8 @@
 """Hazard layers on the standard grid from the Seoul open-data downloads.
 
 Inputs ([서울열린데이터 광장]/hazard/):
-  OA-22715 zip  : 48 Seoul rain gauges (구청·펌프장·동), 10-minute rainfall 2021-2024, cp949 CSV per gauge-year
+  OA-22715 zips : 48 Seoul rain gauges (구청·펌프장·동), 10-minute rainfall, one CSV per gauge-year: 2021-2024 (cp949) and
+                  2025 (utf-8 or cp949, a title line before the header, pump stations named '...P')
   OA-15636 zips : flood-trace polygons 2022-2025 (EPSG:5179) with event dates
   OA-21172 zip  : flood-forecast depth contours (polylines, no CRS declared) -> kept as lines only
 
@@ -26,7 +27,9 @@ from loader import load_grid
 
 SRC = C.OPEN_DIR / "hazard"
 OUT = C.OUT / "hazard"
-YEARS_RAIN = [2021, 2022, 2023, 2024]
+YEARS_RAIN = [2021, 2022, 2023, 2024, 2025]
+RAIN_ZIPS = ["OA-22715_서울시_강우량_2021_2024.zip", "OA-22715_서울시_강우량_2025.zip"]
+GAUGE_ALIAS = {"공항동P": "공항펌프장", "도림2P": "도림2펌프장"}                 # 2025 file names of two pump stations
 
 # gauge name -> 행정동 name fragment used to place the gauge (구청 = the dong containing the district office)
 GAUGE_DONG = {
@@ -74,7 +77,14 @@ def read_rain(zpath):
     for n in z.namelist():
         name = fix(n)
         gauge, year = name[:-8], int(name[-8:-4])
-        d = pd.read_csv(io.BytesIO(z.read(n)), encoding="cp949")
+        gauge = GAUGE_ALIAS.get(gauge, gauge[:-1] + "펌프장" if gauge.endswith("P") else gauge)
+        raw = z.read(n)
+        try:
+            txt = raw.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            txt = raw.decode("cp949")
+        lines = txt.splitlines(); h = next(i for i, l in enumerate(lines) if "," in l)       # skip a title line ('2025년')
+        d = pd.read_csv(io.StringIO("\n".join(lines[h:])))
         d.columns = ["gauge", "time", "mm10"]
         t = pd.to_datetime(d["time"].str.slice(0, 16), format="%Y-%m-%d %H:%M", errors="coerce")
         v = pd.to_numeric(d["mm10"], errors="coerce")
@@ -95,7 +105,11 @@ def main():
 
     # ---------- rain ----------
     gauges = place_gauges(grid)
-    rain = read_rain(SRC / "OA-22715_서울시_강우량_2021_2024.zip")
+    rain = {}
+    for zf in RAIN_ZIPS:
+        for g_, s_ in read_rain(SRC / zf).items():
+            rain[g_] = pd.concat([rain[g_], s_]).sort_index() if g_ in rain else s_
+    assert set(rain) <= set(GAUGE_DONG), sorted(set(rain) - set(GAUGE_DONG))
     gauges = gauges[gauges.gauge.isin(rain)].dropna(subset=["x"]).reset_index(drop=True)
     from scipy.spatial import cKDTree
     tree = cKDTree(gauges[["x", "y"]].values)

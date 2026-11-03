@@ -25,7 +25,7 @@ src/              shared configuration, data loaders and all models / trainers
   train_func.py        conditioning study on the compact encoder (M1)
   train_cap.py         FiLM-MLP M2, Transformers M3/M3b, linear reference R7, masked experts; L-BFGS, long-training and interpolation modes
   train_moe.py         event labels, gate inputs, reference mixtures of experts and gate variants
-  train_moe_f.py       mixtures assembled from frozen experts (X1-X3), zero-shot partners and blends (B1; --blend_set const)
+  train_moe_f.py       mixtures assembled from frozen experts (X1-X3), zero-shot partners and the constant-weight blend B1 (--gate none)
 data_pipeline/    raw downloads -> <LIVPOP_DATA>/processed
 experiments/      base runs (base_*.py) and one script per experiment (exp*.py, diag_*.py); outputs in results/
 figures/          figure scripts and the TikZ framework diagram
@@ -80,7 +80,7 @@ so it can be interrupted and resumed. Individual scripts can also be run directl
 | Table 3: M2 (three runs), M3; Appendix D: capacity ladder, optimizer checks, interpolation | `experiments/base_capacity.py` |
 | Table 3: M3b | `experiments/exp07_patchtst.py` |
 | reference mixture; Section 5.5 gate priors; Appendix B, gate variants | `experiments/base_gate_variants.py` |
-| extreme expert and mixture-tuned gate used by X1–X3 and the rolling runs | `experiments/base_mixture.py` |
+| extreme expert used by X1–X3 and the rolling runs; Section 5.5, alternative expert training (F0–F3) | `experiments/base_mixture.py` |
 | Table 3: X1–X3 (three runs); Section 5.5, refined event labels | `experiments/exp04_event_definition.py`, `exp13_moe_seeds.py` |
 | Section 5.5, emergency-alert gate channels | `experiments/exp05_dmsg_gate.py` |
 | Table 3: R5, R6, B1; Table 5: R6 and B1 rows | `experiments/exp17_ctx72.py` |

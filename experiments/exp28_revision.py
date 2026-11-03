@@ -1,7 +1,6 @@
 """Experiment 28 - additions for the ESWA submission.
 
-(a) Rolling B1 restricted to constant weights: the Q3 fold of exp17 selected a gate-proportional weight; re-run the Q3 assembly with
-    --blend_set const so that every quarter uses the B1 definition of the paper ((1-w) M2 + w R6, w constant, selected on validation).
+(a) Rolling B1 by quarter, (1-w) M2 + w R6 with constant w selected on validation (exp17 rolling assembly, no gate).
 (b) Fully linear reference under the M2 protocol: one affine map from the 72-hour history (z, log-baseline), the future log-baseline and the
     future calendar to the 24 normalized residuals, Huber loss, AdamW one-cycle (peak 3e-3, no weight decay), <= 48 epochs, patience 7.
 (c) Paired weekly block bootstrap (2,000 resamples of ISO weeks of the forecast origin):
@@ -38,13 +37,9 @@ def call(name, cmd, splits=None, env_extra=None):
 
 # ---------------------------------------------------------------- (a)
 def rolling_b1_const():
-    name = "exp28_Q3_roll_residual_const"
-    if not (OUT / f"{name}.json").exists():
-        call(name, [sys.executable, str(SRC / "train_moe_f.py"), "--name", name, "--normal", "ckpt:roll_Q3_A5", "--extreme", f"npz:{E17 / 'chronos_Q3_roll_residual.npz'}",
-                    "--gate", "ckpt:roll_Q3_X2_gate", "--blend_set", "const"], FOLDS["Q3"], {"LP_CKPT": str(ROLL_CKPT)})
     rows = []
     for q in FOLDS:
-        f = OUT / f"{name}.json" if q == "Q3" else E17 / f"exp17_{q}_roll_residual.json"; r = json.loads(f.read_text(encoding="utf-8")); t = r["models"]["blend_val"]["test"]
+        r = json.loads((E17 / f"exp17_{q}_roll_residual.json").read_text(encoding="utf-8")); t = r["models"]["blend_val"]["test"]
         rows.append({"quarter": q, "blend": r["blend_desc"], "wMAPE": 100 * t["X_wmape"], "MAE_E": t["MAE_E"], "top1": t["R_rel_err_top1pct"], "recall": t["extreme_recall_top1"]})
     df = pd.DataFrame(rows); df.loc["mean"] = ["mean", "", *df[["wMAPE", "MAE_E", "top1", "recall"]].mean().values]
     df.to_csv(OUT / "rolling_b1_const.csv", index=False, encoding="utf-8-sig"); print(df.round(3).to_string(), flush=True)

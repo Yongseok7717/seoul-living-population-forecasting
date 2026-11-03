@@ -1,12 +1,12 @@
 """External prior channels for the extreme gate (information available before the target hour).
 
-    python build_priors.py [--venue ../data/venue_events.csv]
+    python build_priors.py [--venue <csv>]      # default: <LIVPOP_DATA>/data/venue_events.csv (data_pipeline/build_venue_events.py)
 
 Outputs processed/priors/
   prior_cal_YYYYMM.npy   [T_month, 9]      per-hour calendar priors (same for all cells): holiday, off-day (weekend/holiday),
                                           day before an off block (workday), day after, off-block length/5, position in block/5,
                                           workers' day (05-01), school vacation (Seoul approx.), year-end week (12-24..12-31)
-  prior_rain_YYYYMM.npy  [T_month, N_all]  hourly rain (mm) from the gauge interpolation (2021-2024; zeros where unavailable), float16
+  prior_rain_YYYYMM.npy  [T_month, N_all]  hourly rain (mm) from the gauge interpolation (2023-2025; zeros where unavailable), float16
   prior_rainok_YYYYMM.npy[T_month]         1 if rain data exists for the hour
   prior_venue_YYYYMM.npy [T_month, N_all]  scheduled-event window indicator (0/1) from the venue schedule CSV, float16
 Venue CSV columns: date (YYYY-MM-DD), venue, type, start_hour, end_hour, note. Venues are mapped to cells within their radius.
@@ -61,7 +61,7 @@ def calendar_priors(ti):
 
 
 def main():
-    ap = argparse.ArgumentParser(); ap.add_argument("--venue", default=None); args = ap.parse_args()
+    ap = argparse.ArgumentParser(); ap.add_argument("--venue", default=str(C.TABLES / "venue_events.csv")); args = ap.parse_args()
     OUT.mkdir(parents=True, exist_ok=True); grid = load_grid(with_geometry=False); N = len(grid)
     xy = grid[["CELL_X", "CELL_Y"]].values.astype(float)
     months = months_between("202301", "202601")
@@ -71,7 +71,8 @@ def main():
         if f.exists():
             idx = pd.read_parquet(C.OUT / "hazard" / f"rain_hourly_index_{y}.parquet"); rain[y] = (np.load(f, mmap_mode="r"), pd.to_datetime(idx.datetime))
     ven = None
-    if args.venue and Path(args.venue).exists():
+    assert Path(args.venue).exists(), f"venue schedule not found: {args.venue}"
+    if args.venue:
         ven = pd.read_csv(args.venue, encoding="utf-8-sig"); print("venue events", len(ven), ven.venue.value_counts().to_dict())
     cell_sets = {v: np.where(np.hypot(xy[:, 0] - x, xy[:, 1] - y) <= r)[0] for v, (x, y, r) in VENUES.items()}
     print({v: len(c) for v, c in cell_sets.items()})

@@ -123,11 +123,10 @@ class ResidualData:
         self.RP = {s: (self.X[s] - self.B[s]).astype(np.float32) for s in self.X}
         # log-baseline as an input channel (scale information), standardised per cell
         lb = np.log1p(self.B["train"][ok]); self.lb_mu = lb.mean(0).astype(np.float32); self.lb_sd = np.maximum(lb.std(0), 0.05).astype(np.float32)
-        # static features: facility counts + cluster one-hot + Vs30
+        # static features: facility counts + cluster one-hot
         fc = pd.read_parquet(C.OUT / "facilities" / "facility_counts_by_cell.parquet").set_index("cell_idx")
         feats = [np.log1p(fc[c].reindex(self.cells).fillna(0).values) for c in fc.columns if c.startswith("n_")]
         feats += [(self.cluster == c).astype(float) for c in range(int(self.cluster.max()) + 1)]
-        vs = grid.Vs30.reindex(self.cells).values.astype(float); vs = np.where(np.isnan(vs), np.nanmedian(vs), vs); feats.append(vs)
         S = np.stack(feats, 1).astype(np.float32); self.static = (S - S.mean(0)) / (S.std(0) + 1e-6)
 
     # ---- relational operators on the subset (propagation matrices, row-stochastic-ish) ----

@@ -27,7 +27,6 @@ RAW_LOCAL = GRID_DIR / "250M격자_생활인구(내국인)"
 RAW_FORN_LONG = GRID_DIR / "250M격자_생활인구(장기외국인)"
 RAW_FORN_TEMP = GRID_DIR / "250M격자_생활인구(단기외국인)"
 MATCH_SHP = GRID_DIR / "match" / "match.shp"            # EPSG:5179, 10,125 cells
-VS30_SHP = GRID_DIR / "match" / "grid_with_Vs30.shp"    # EPSG:5186, same CELL_IDs
 DONG_CODE_CSV = GRID_DIR / "match" / "250_LOCAL_RESD_행정동코드.csv"
 OPEN_DIR = ROOT / "[서울열린데이터 광장]"                # downloads of the fetch scripts
 TABLES = ROOT / "data"                                   # compiled tables (venue schedule, emergency alerts)
