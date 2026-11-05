@@ -1,5 +1,7 @@
 # Fine-grained urban population forecasting in Seoul
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23973061.svg)](https://doi.org/10.5281/zenodo.23973061)
+
 Code for the paper *Fine-grained urban population forecasting in Seoul under temporal shift and local extremes*
 (Yongseok Jang and Young-Suk Lee).
 
@@ -114,4 +116,7 @@ MIT (see `LICENSE`). The license covers the code only; the data remain under the
 
 ## Citation
 
-If you use this code, please cite the paper (reference to be added on publication).
+If you use this code, please cite the paper (reference to be added on publication) and the archived code:
+
+Jang, Y. and Lee, Y.-S. (2026). Code for "Fine-grained urban population forecasting in Seoul under temporal shift and local
+extremes" (v1.0.1). Zenodo. https://doi.org/10.5281/zenodo.23973061

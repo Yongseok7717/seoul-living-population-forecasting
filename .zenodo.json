@@ -1,0 +1,11 @@
+{
+  "title": "Code for \"Fine-grained urban population forecasting in Seoul under temporal shift and local extremes\"",
+  "description": "Data pipeline, forecasting models, experiment scripts and figure scripts for hourly 250 m grid living-population forecasting in Seoul (2023-2025). The 250 m grid Seoul Living Population data are provided by the Seoul Metropolitan Government under restrictions and are not included.",
+  "upload_type": "software",
+  "license": "MIT",
+  "creators": [
+    {"name": "Jang, Yongseok"},
+    {"name": "Lee, Young-Suk"}
+  ],
+  "keywords": ["urban population forecasting", "living population", "mobile phone data", "Seoul", "time series"]
+}
