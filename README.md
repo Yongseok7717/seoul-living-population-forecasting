@@ -8,9 +8,10 @@ baseline–residual framework: a causal same-hour median `B` over the previous 4
 normalized residual `z = clip((X − B)/s_i, −20, 20)` from a 72-hour history, and the forecast is `X̂ = B + s_i ẑ`.
 The repository contains the data pipeline, the models, one script per experiment of the paper and the figure scripts.
 
-**Data are not redistributed.** The living-population product and the auxiliary data are public (Seoul Open Data Plaza,
-data.go.kr, safetydata.go.kr); `data_pipeline/` downloads or reads them and builds every processed input. Processed subsets are
-available from the authors upon reasonable request.
+**Data are not redistributed.** The 250 m grid Seoul Living Population data were provided by the Seoul Metropolitan Government
+and cannot be shared publicly because of the provider's security restrictions. The auxiliary data are public (Seoul Open Data
+Plaza, data.go.kr, safetydata.go.kr); `data_pipeline/` downloads or reads them and, given the living-population files, builds
+every processed input.
 
 ## Layout
 
