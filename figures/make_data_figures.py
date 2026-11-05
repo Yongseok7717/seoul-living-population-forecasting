@@ -32,11 +32,8 @@ def f01():
     qc = qc[(qc.d >= "2023-01-01") & (qc.d <= "2025-12-31") & ~qc.d.isin(an.d)]                  # days used in the study
     y = qc.set_index("d").pop10_total_daily_mean / 1e6; wk = y.rolling("7D", center=True).mean()
     fig, ax = plt.subplots(figsize=WIDE); ax.plot(y.index, y.values, lw=0.5, color=C_MAIN, alpha=0.35, label="daily mean"); ax.plot(wk.index, wk.values, lw=1.4, color=C_MAIN, label="7-day mean"); lo, hi = 9.6, 11.4
-    # fixed protocol: Jan-Feb 2023 baseline initialisation, Mar-Dec 2023 training, 2024 validation, 2025 test
-    for (a, b), lab, al in ((("2023-01-01", "2023-03-01"), "init.", 0.12), (("2023-03-01", "2024-01-01"), "training", 0.03),
-                            (("2024-01-01", "2025-01-01"), "validation", 0.07), (("2025-01-01", "2026-01-01"), "test", 0.11)):
-        a, b = pd.Timestamp(a), pd.Timestamp(b); ax.axvspan(a, b, color="#000000", alpha=al, lw=0)
-        ax.text(a + (b - a) / 2, lo + 0.05, lab, ha="center", va="bottom", fontsize=9, color="#555555")
+    for reg, d in qc.groupby("regime"):
+        ax.axvspan(d.d.min(), d.d.max(), color="#000000", alpha=0.04 if reg == "A" else 0.09); ax.text(d.d.min() + (d.d.max() - d.d.min()) / 2, lo + 0.05, f"regime {reg}", ha="center", va="bottom", fontsize=9, color="#555555")
     ax.set_ylim(lo, hi); ax.set_xlim(pd.Timestamp("2023-01-01"), pd.Timestamp("2026-01-01"))
     ax.xaxis.set_major_locator(mdates.MonthLocator(bymonth=(1, 7))); ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m")); ax.xaxis.set_minor_locator(mdates.MonthLocator())
     ax.set_ylabel("population (million)"); ax.set_xlabel("date"); ax.legend(loc="upper left", ncol=2, fontsize=9); save(fig, "F01a_daily_total")
